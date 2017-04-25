@@ -1,0 +1,14 @@
+{
+  "id" : "card_8P7OWXA5xiTS1ISnyZcum1KV",
+  "created" : 1415810511,
+  "objectType" : "card",
+  "first6" : "424242",
+  "last4" : "4242",
+  "fingerprint" : "e3d8suyIDgFg3pE7",
+  "expMonth" : "11",
+  "expYear" : "2022",
+  "cardholderName" : "John Doe",
+  "customerId" : "cust_AoR0wvgntQWRUYMdZNLYMz5R",
+  "brand" : "Visa",
+  "type" : "Credit Card"
+}
