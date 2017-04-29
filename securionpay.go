@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/orijtech/otils"
 )
 
 type Client struct {
@@ -127,8 +129,9 @@ type AddCardRequest struct {
 var (
 	errInvalidCustomerID = errors.New("invalid customerID")
 
-	errBlankCard   = errors.New("expecting a non-blank card")
-	errUnsetCardID = errors.New("expecting the card ID to have been set")
+	errBlankCard    = errors.New("expecting a non-blank card")
+	errUnsetCardID  = errors.New("expecting the card ID to have been set")
+	errBlankTokenID = errors.New("expecting a non-blank token ID")
 
 	errBlankAddCardRequest = errors.New("expecting a non-blank card request")
 )
@@ -184,41 +187,19 @@ func (c *Client) AddCard(acr *AddCardRequest) (*Card, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(c._apiKey(), "")
 
-	res, err := c.httpClient().Do(req)
+	blob, err = c.doAuthThenReqAndSlurpResponse(req)
 	if err != nil {
 		return nil, err
 	}
-	if res.Body != nil {
-		defer res.Body.Close()
-	}
-
-	if !statusOK(res.StatusCode) {
-		errMsg := res.Status
-		if res.Body != nil {
-			slurp, _ := ioutil.ReadAll(res.Body)
-			if len(slurp) > 0 {
-				errMsg = string(slurp)
-			}
-		}
-		return nil, errors.New(errMsg)
-	}
-	slurp, slurpErr := ioutil.ReadAll(res.Body)
-
-	if slurpErr != nil {
-		return nil, slurpErr
-	}
 
 	registeredCard := new(Card)
-	if err := json.Unmarshal(slurp, registeredCard); err != nil {
+	if err := json.Unmarshal(blob, registeredCard); err != nil {
 		return nil, err
 	}
 
 	return registeredCard, nil
 }
-
-func statusOK(code int) bool { return code >= 200 && code <= 299 }
 
 func (c *Client) httpRoundTripper() http.RoundTripper {
 	c.RLock()
@@ -367,8 +348,162 @@ func (c *Client) Charge(creq *Charge) (*ChargeResponse, error) {
 	}
 
 	req, err := http.NewRequest("POST", chargeEndpointURL, bytes.NewReader(blob))
-	req.SetBasicAuth(c._apiKey(), "")
+	if err != nil {
+		return nil, err
+	}
 
+	blob, err = c.doAuthThenReqAndSlurpResponse(req)
+	if err != nil {
+		return nil, err
+	}
+
+	cResp := new(ChargeResponse)
+	if err := json.Unmarshal(blob, cResp); err != nil {
+		return nil, err
+	}
+
+	return cResp, nil
+}
+
+type Token struct {
+	ID        string `json:"id"`
+	CreatedAt int64  `json:"created"`
+
+	ObjectType     ObjectType `json:"objectType"`
+	First6Digits   string     `json:"first6"`
+	Last4Digits    string     `json:"last4"`
+	FingerPrint    string     `json:"fingerprint"`
+	ExpiryMonth    int        `json:"expMonth,string"`
+	ExpiryYear     int        `json:"expYear,string"`
+	Brand          string     `json:"brand"`
+	Type           CardType   `json:"type"`
+	CardHolderName string     `json:"cardholderName"`
+
+	AddressLine1 string `json:"addressLine1,omitempty"`
+	AddressLine2 string `json:"addressLine2,omitempty"`
+	City         string `json:"addressCity,omitempty"`
+	State        string `json:"addressState,omitempty"`
+	ZIP          string `json:"addressZip,omitempty"`
+	Country      string `json:"addressCountry,omitempty"`
+
+	Used bool  `json:"used,omitempty"`
+	Card *Card `json:"card"`
+
+	FraudCheckData   *FraudCheckData   `json:"fraudCheckData,omitempty"`
+	ThreeDSecureInfo *ThreeDSecureInfo `json:"threeDSecureInfo,omitempty"`
+}
+
+type ThreeDSecureInfo struct {
+	// AmountMinorCurrencyUnits is the charge in minor
+	// amounts of currency. For example 10€ is represented
+	// as "1000" and 10¥ is represented as "10"
+	AmountMinorCurrencyUnits int `json:"amount,string"`
+
+	// Currency is the 3 digit ISO currency code
+	// for example: EUR, USD, CAD
+	Currency Currency `json:"currency"`
+
+	Enrolled       bool           `json:"enrolled,omitempty"`
+	LiabilityShift LiabilityShift `json:"liabilityShift,omitempty"`
+}
+
+type LiabilityShift string
+
+const (
+	SuccessfulShift LiabilityShift = "successful"
+	FailedShift     LiabilityShift = "failed"
+	NotPossible     LiabilityShift = "not_possible"
+)
+
+type TokenRequest struct {
+	CardNumber  string `json:"number"`
+	ExpiryMonth int    `json:"expMonth,string"`
+	ExpiryYear  int    `json:"expYear,string"`
+
+	SecurityCode   string `json:"cvc"`
+	CardHolderName string `json:"cardholderName"`
+	City           string `json:"addressCity,omitempty"`
+	State          string `json:"addressState,omitempty"`
+	ZIP            string `json:"addressZip,omitempty"`
+	AddressLine1   string `json:"addressLine1,omitempty"`
+	AddressLine2   string `json:"addressLine2,omitempty"`
+	Country        string `json:"addressCountry,omitempty"`
+
+	FraudCheckData *FraudCheckData `json:"fraudCheckData"`
+}
+
+var (
+	errNilTokenRequest   = errors.New("nil token request passed in")
+	errEmptySecurityCode = errors.New("expecting a non-empty security code aka \"cvc\"")
+)
+
+func (treq *TokenRequest) Validate() error {
+	if treq == nil {
+		return errNilTokenRequest
+	}
+	if strings.TrimSpace(treq.SecurityCode) == "" {
+		return errEmptySecurityCode
+	}
+	return nil
+}
+
+func (c *Client) NewToken(treq *TokenRequest) (*Token, error) {
+	if err := treq.Validate(); err != nil {
+		return nil, err
+	}
+
+	blob, err := json.Marshal(treq)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", tokensEndpointURL, bytes.NewReader(blob))
+	if err != nil {
+		return nil, err
+	}
+
+	blob, err = c.doAuthThenReqAndSlurpResponse(req)
+	if err != nil {
+		return nil, err
+	}
+
+	tok := new(Token)
+	if err := json.Unmarshal(blob, tok); err != nil {
+		return nil, err
+	}
+
+	return tok, nil
+}
+
+const tokensEndpointURL = "https://api.securionpay.com/tokens"
+
+// GET https://api.securionpay.com/tokens/{TOKEN_ID}
+func (c *Client) FindTokenByID(tokenID string) (*Token, error) {
+	tokenID = strings.TrimSpace(tokenID)
+	if tokenID == "" {
+		return nil, errBlankTokenID
+	}
+
+	fullURL := fmt.Sprintf("%s/%s", tokensEndpointURL, tokenID)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	blob, err := c.doAuthThenReqAndSlurpResponse(req)
+	if err != nil {
+		return nil, err
+	}
+
+	tok := new(Token)
+	if err := json.Unmarshal(blob, tok); err != nil {
+		return nil, err
+	}
+	return tok, nil
+}
+
+func (c *Client) doAuthThenReqAndSlurpResponse(req *http.Request) ([]byte, error) {
+	req.SetBasicAuth(c._apiKey(), "")
 	res, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
@@ -377,7 +512,7 @@ func (c *Client) Charge(creq *Charge) (*ChargeResponse, error) {
 		defer res.Body.Close()
 	}
 
-	if !statusOK(res.StatusCode) {
+	if !otils.StatusOK(res.StatusCode) {
 		errMsg := res.Status
 		if res.Body != nil {
 			slurp, _ := ioutil.ReadAll(res.Body)
@@ -387,16 +522,6 @@ func (c *Client) Charge(creq *Charge) (*ChargeResponse, error) {
 		}
 		return nil, errors.New(errMsg)
 	}
-	slurp, slurpErr := ioutil.ReadAll(res.Body)
 
-	if slurpErr != nil {
-		return nil, slurpErr
-	}
-
-	cResp := new(ChargeResponse)
-	if err := json.Unmarshal(slurp, cResp); err != nil {
-		return nil, err
-	}
-
-	return cResp, nil
+	return ioutil.ReadAll(res.Body)
 }

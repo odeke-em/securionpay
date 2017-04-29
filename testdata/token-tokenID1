@@ -1,0 +1,14 @@
+{
+  "id" : "tok_NGsyDoJQXop5Pqqi6HizbJTe",
+  "created" : 1415810511,
+  "objectType" : "token",
+  "first6" : "424242",
+  "last4" : "4242",
+  "fingerprint" : "e3d8suyIDgFg3pE7",
+  "expMonth" : "11",
+  "expYear" : "2022",
+  "brand" : "Visa",
+  "type" : "Credit Card",
+  "cardholderName" : "John Doe",
+  "used" : false
+}

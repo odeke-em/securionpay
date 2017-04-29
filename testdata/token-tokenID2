@@ -1,0 +1,14 @@
+{
+  "id" : "tok_NGsyDoJQXop5Pqqi6HizbJTe",
+  "created" : 1415810511,
+  "objectType" : "token",
+  "first6" : "242424",
+  "last4" : "2424",
+  "fingerprint" : "f8n4TuyoJgFl3pyP",
+  "expMonth" : "10",
+  "expYear" : "2021",
+  "brand" : "Visa",
+  "type" : "Credit Card",
+  "cardholderName" : "John Smith",
+  "used" : true
+}

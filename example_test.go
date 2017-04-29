@@ -91,3 +91,38 @@ func Example_client_fromEnv() {
 
 	fmt.Printf("client: %#v\n", client)
 }
+
+func Example_client_findTokenByID() {
+	client, err := securionpay.NewClientFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	token, err := client.FindTokenByID("tok_NGsyDoJQXop5Pqqi6HizbJTe")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("my token: %#v\n", token)
+}
+
+func Example_client_newToken() {
+	client, err := securionpay.NewClientFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	token, err := client.NewToken(&securionpay.TokenRequest{
+		CardNumber:     "24242424242424",
+		ExpiryMonth:    10,
+		ExpiryYear:     2020,
+		SecurityCode:   "123",
+		CardHolderName: "Ashley Jones",
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("newly created token: %#v\n", token)
+}
