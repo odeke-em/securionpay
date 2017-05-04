@@ -3,6 +3,7 @@ package securionpay_test
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/orijtech/securionpay"
 )
@@ -125,4 +126,24 @@ func Example_client_newToken() {
 	}
 
 	fmt.Printf("newly created token: %#v\n", token)
+}
+
+func Example_client_ListCredits() {
+	client, err := securionpay.NewClientFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	creds, err := client.ListCredits(&securionpay.CreditRequest{
+		Limit:             10,
+		IncludeTotalCount: true,
+
+		// All credits created at least 1000 hours ago.
+		CreatedOnOrAfter: time.Now().Add(-1 * 1000 * time.Hour).Unix(),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Credits: %#v\n", creds)
 }

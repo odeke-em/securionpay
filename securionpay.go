@@ -180,7 +180,7 @@ func (c *Client) AddCard(acr *AddCardRequest) (*Card, error) {
 		return nil, err
 	}
 
-	customerID := strings.TrimSpace(acr.CustomerID)
+	customerID := strings.TrimSpace(string(acr.CustomerID))
 	if customerID == "" {
 		return nil, errUnsetCardID
 	}
@@ -262,7 +262,7 @@ type Charge struct {
 	Card interface{} `json:"card,omitempty"`
 
 	// Either CustomerID or Card can be set
-	CustomerID string `json:"customerId,omitempty"`
+	CustomerID CustomerID `json:"customerId,omitempty"`
 
 	Shipping *Shipping `json:"shipping,omitempty"`
 	Billing  *Billing  `json:"billing,omitempty"`
@@ -315,9 +315,10 @@ type Dispute struct {
 	ObjectType string `json:"objectType"`
 	CreatedAt  int64  `json:"created"`
 	UpdatedAt  int64  `json:"updated"`
-	Status     string `json:"status"`
-	Reason     string `json:"reason"`
+	Reason     Reason `json:"reason"`
 	Amount     int    `json:"amount"`
+
+	Status DisputeStatus `json:"status"`
 
 	AcceptedAsLost bool `json:"acceptedAsLost"`
 	// Currency is the 3 digit ISO currency code
@@ -326,6 +327,29 @@ type Dispute struct {
 }
 
 type DisputeStatus string
+
+const (
+	DisputeResponseNeeded           DisputeStatus = "RETRIEVAL_REQUEST_NEW"
+	DisputeRequestUnderReview       DisputeStatus = "RETRIEVAL_REQUEST_RESPONSE_UNDER_REVIEW"
+	DisputeChargebackResponseNeeded DisputeStatus = "CHARGEBACK_NEW"
+	DisputeRequestRepresented       DisputeStatus = "RETRIEVAL_REQUEST_REPRESENTED"
+	DisputeResponseUnderReview      DisputeStatus = "RETRIEVAL_RESPONSE_RESPONSE_UNDER_REVIEW"
+	DisputeChargebackDisputeWon     DisputeStatus = "CHARGEBACK_REPRESENTED_SUCCESSFULLY"
+	DisputeChargebackDisputeLost    DisputeStatus = "CHARGEBACK_REPRESENTED_UNSUCCESSFULLY"
+)
+
+type Reason string
+
+const (
+	ReasonFraudulent            Reason = "FRAUDULENT"
+	ReasonUnrecognized          Reason = "UNRECOGNIZED"
+	ReasonDuplicate             Reason = "DUPLICATE"
+	ReasonSubscriptionCancelled Reason = "SUBSCRIPTION_CANCELED"
+	ReasonProductNotReceived    Reason = "PRODUCT_NOT_RECEIVED"
+	ReasonProductUnacceptable   Reason = "PRODUCT_UNACCEPTABLE"
+	ReasonCreditNotProcessed    Reason = "CREDIT_NOT_PROCESSED"
+	ReasonGeneral               Reason = "GENERAL"
+)
 
 var (
 	errBlankCharge = errors.New("expecting a non-blank charge")
@@ -511,6 +535,95 @@ func (c *Client) FindTokenByID(tokenID string) (*Token, error) {
 		return nil, err
 	}
 	return tok, nil
+}
+
+type Credit struct {
+	ID         string     `json:"id"`
+	CreatedAt  int64      `json:"created"`
+	ObjectType ObjectType `json:"objectType"`
+
+	// AmountMinorCurrencyUnits is the charge in minor
+	// amounts of currency. For example 10€ is represented
+	// as "1000" and 10¥ is represented as "10"
+	AmountMinorCurrencyUnits int `json:"amount,string"`
+
+	Description string `json:"description"`
+
+	Card *Card `json:"card"`
+
+	CustomerID CustomerID `json:"customerId,omitempty"`
+
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type Credits struct {
+	Credits []*Credit `json:"list"`
+}
+
+type CustomerID string
+
+var _ json.Unmarshaler = (*CustomerID)(nil)
+
+func (cid *CustomerID) UnmarshalJSON(b []byte) error {
+	str := string(b)
+	// Special case when we encounter `null`, modify it to the empty string
+	if str == "null" {
+		str = ""
+	}
+	unquoted, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	*cid = CustomerID(unquoted)
+
+	return nil
+}
+
+type CreditRequest struct {
+	Limit      int        `json:"limit,omitempty"`
+	CustomerID CustomerID `json:"customerId,omitempty"`
+
+	CreatedAfter      int64 `json:"gt,omitempty"`
+	CreatedOnOrAfter  int64 `json:"gte,omitempty"`
+	CreatedBefore     int64 `json:"lt,omitempty"`
+	CreatedOnOrBefore int64 `json:"lte,omitempty"`
+
+	StartingAfterId   string `json:"startingAfterId,omitempty"`
+	EndingBeforeId    string `json:"endingBeforeId,omitempty"`
+	IncludeTotalCount bool   `json:"includeTotalCount,omitempty"`
+}
+
+const defaultCreditLimit = 3
+
+func (c *Client) ListCredits(cr *CreditRequest) (*Credits, error) {
+	creq := new(CreditRequest)
+	if cr != nil {
+		*creq = *cr
+	}
+
+	if creq.Limit < 1 {
+		creq.Limit = defaultCreditLimit
+	}
+
+	qv, err := otils.ToURLValues(creq)
+	if err != nil {
+		return nil, err
+	}
+
+	fullURL := fmt.Sprintf("https://api.securionpay.com/credits?%s", qv.Encode())
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	slurp, err := c.doAuthThenReqAndSlurpResponse(req)
+	if err != nil {
+		return nil, err
+	}
+	creds := new(Credits)
+	if err := json.Unmarshal(slurp, creds); err != nil {
+		return nil, err
+	}
+	return creds, nil
 }
 
 func (c *Client) doAuthThenReqAndSlurpResponse(req *http.Request) ([]byte, error) {

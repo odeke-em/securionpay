@@ -1,0 +1,22 @@
+{
+  "id" : "cr_OwM7B3WWha5SIfjNSw2eUqVb",
+  "created" : 1415810511,
+  "objectType" : "credit",
+  "amount" : 499,
+  "currency" : "EUR",
+  "description" : "Example credit",
+  "card" : {
+    "id" : "card_8P7OWXA5xiTS1ISnyZcum1KV",
+    "created" : 1415810511,
+    "objectType" : "card",
+    "first6" : "424242",
+    "last4" : "4242",
+    "fingerprint" : "e3d8suyIDgFg3pE7",
+    "expMonth" : "11",
+    "expYear" : "2022",
+    "brand" : "Visa",
+    "type" : "Credit Card"
+  },
+  "customerId" : null,
+  "metadata" : {}
+}
