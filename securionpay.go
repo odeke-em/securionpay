@@ -39,6 +39,17 @@ func NewClientFromEnv() (*Client, error) {
 	return client, nil
 }
 
+// NewClient first tries all the apiKeys provided as arguments,
+// if it finds a non blank one, uses that.
+// Otherwise it falls back to finding the API key from the environment.
+func NewClient(apiKeysToTry ...string) (*Client, error) {
+	nonBlankAPIKey := otils.FirstNonEmptyString(apiKeysToTry...)
+	if nonBlankAPIKey != "" {
+		return &Client{apiKey: nonBlankAPIKey}, nil
+	}
+	return NewClientFromEnv()
+}
+
 func (c *Client) SetHTTPRoundTripper(rt http.RoundTripper) {
 	c.Lock()
 	c.rt = rt
